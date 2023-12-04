@@ -878,7 +878,7 @@ class BEiT(nn.Module):
         use_abs_pos_emb=False,
         use_rel_pos_bias=False,
         use_shared_rel_pos_bias=False,
-        use_checkpoint=True,
+        use_checkpoint=False,  # TODO changed to false to run torch script tracing. need to revert it back later
         pretrained=None,
         out_features=None,
     ):

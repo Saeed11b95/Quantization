@@ -56,9 +56,8 @@ class VGT(GeneralizedRCNN):
             bros_embedding_path,
             use_pretrain_weight,
             use_UNK_text,
-            )
-        self.quant =torch.ao.quantization.QuantStub()
-        self.dequant = torch.ao.quantization.DeQuantStub()
+        )
+
     @classmethod
     def from_config(cls, cfg):
         ret = super().from_config(cfg)
@@ -74,7 +73,7 @@ class VGT(GeneralizedRCNN):
         )
         return ret
 
-    def forward(self, image_batch, batched_inputs: List[Dict[str, torch.Tensor]]):
+    def forward(self, batched_inputs: List[Dict[str, torch.Tensor]]):
         """
         Args:
             batched_inputs: a list, batched outputs of :class:`DatasetMapper` .
@@ -97,30 +96,27 @@ class VGT(GeneralizedRCNN):
                 The :class:`Instances` object has the following keys:
                 "pred_boxes", "pred_classes", "scores", "pred_masks", "pred_keypoints"
         """
-        image_batch = image_batch.tensor
         if not self.training:
-            return self.inference(image_batch, batched_inputs)
-        # images = self.preprocess_image(batched_inputs)
+            return self.inference(batched_inputs)
+        images = self.preprocess_image(batched_inputs)
         if "instances" in batched_inputs[0]:
             gt_instances = [x["instances"].to(self.device) for x in batched_inputs]
         else:
             gt_instances = None
-        
-        chargrid = self.Wordgrid_embedding(image_batch, batched_inputs)
-        features = self.backbone(image_batch, chargrid)
+
+        chargrid = self.Wordgrid_embedding(images.tensor, batched_inputs)
+        features = self.backbone(images.tensor, chargrid)
 
         if self.proposal_generator is not None:
             proposals, proposal_losses = self.proposal_generator(
-                image_batch, features, gt_instances
+                images, features, gt_instances
             )
         else:
             assert "proposals" in batched_inputs[0]
             proposals = [x["proposals"].to(self.device) for x in batched_inputs]
             proposal_losses = {}
 
-        _, detector_losses = self.roi_heads(
-            image_batch, features, proposals, gt_instances
-        )
+        _, detector_losses = self.roi_heads(images, features, proposals, gt_instances)
         if self.vis_period > 0:
             storage = get_event_storage()
             if storage.iter % self.vis_period == 0:
@@ -134,7 +130,6 @@ class VGT(GeneralizedRCNN):
 
     def inference(
         self,
-        image_batch,
         batched_inputs: List[Dict[str, torch.Tensor]],
         detected_instances: Optional[List[Instances]] = None,
         do_postprocess: bool = True,
@@ -157,18 +152,18 @@ class VGT(GeneralizedRCNN):
             Otherwise, a list[Instances] containing raw network outputs.
         """
         assert not self.training
-        # images = self.preprocess_image(batched_inputs)11
-        chargrid = self.Wordgrid_embedding(image_batch, batched_inputs)
-        features = self.backbone(image_batch, chargrid)
+        images = self.preprocess_image(batched_inputs)
+        chargrid = self.Wordgrid_embedding(images.tensor, batched_inputs)
+        features = self.backbone(images.tensor, chargrid)
 
         if detected_instances is None:
             if self.proposal_generator is not None:
-                proposals, _ = self.proposal_generator(image_batch, features, None)
+                proposals, _ = self.proposal_generator(images, features, None)
             else:
                 assert "proposals" in batched_inputs[0]
                 proposals = [x["proposals"].to(self.device) for x in batched_inputs]
 
-            results, _ = self.roi_heads(image_batch, features, proposals, None)
+            results, _ = self.roi_heads(images, features, proposals, None)
         else:
             detected_instances = [x.to(self.device) for x in detected_instances]
             results = self.roi_heads.forward_with_given_boxes(
@@ -179,8 +174,20 @@ class VGT(GeneralizedRCNN):
             assert (
                 not torch.jit.is_scripting()
             ), "Scripting is not supported for postprocess."
-            return GeneralizedRCNN._postprocess(
-                results, batched_inputs, image_batch.image_sizes
+            return self._final_postprocess(
+                GeneralizedRCNN._postprocess(results, batched_inputs, images.tensor)
             )
         else:
             return results
+
+    def _final_postprocess(self, results):
+        out = []
+        for res in results:
+            out.append(
+                {
+                    "bboxes": res["instances"].pred_boxes.tensor,
+                    "scores": res["instances"].scores,
+                    "class": res["instances"].pred_classes,
+                }
+            )
+        return out

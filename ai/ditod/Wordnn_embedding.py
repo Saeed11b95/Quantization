@@ -1,7 +1,7 @@
 import numpy as np
 import torch
 from torch import nn
-
+import numpy as np
 from .tokenization_bros import BrosTokenizer
 
 
@@ -68,16 +68,12 @@ class WordnnEmbedding(nn.Module):
         Returns:
             Tensor: in shape of [B x N x L x D], where D is the embedding_dim.
         """
-        print(batched_inputs)
-        print(img)
         device = img.device
         batch_b, _, batch_h, batch_w = img.size()
-        print(img.size())
 
         chargrid_map = torch.zeros(
             (batch_b, batch_h // stride, batch_w // stride), dtype=torch.int64
         ).to(device)
-        print("Batch_Size is >.......", batch_b)
         for iter_b in range(batch_b):
             per_input_ids = batched_inputs[iter_b]["input_ids"]
             per_input_bbox = batched_inputs[iter_b]["bbox"]
@@ -89,10 +85,12 @@ class WordnnEmbedding(nn.Module):
                     per_id = per_input_ids[word_idx]
 
                     bbox = per_input_bbox[word_idx] / stride
+                    # w_start, h_start, w_end, h_end = (
+                    #     bbox.round().astype(np.int).tolist()
+                    # )
                     w_start, h_start, w_end, h_end = (
-                        bbox.round().astype(np.int).tolist()
+                        bbox.cpu().detach().numpy().round().astype(int).tolist()
                     )
-
                     if self.use_UNK_text:
                         chargrid_map[iter_b, h_start:h_end, w_start:w_end] = 100
                     else:
