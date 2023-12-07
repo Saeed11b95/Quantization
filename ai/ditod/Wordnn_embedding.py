@@ -89,7 +89,7 @@ class WordnnEmbedding(nn.Module):
                     #     bbox.round().astype(np.int).tolist()
                     # )
                     w_start, h_start, w_end, h_end = (
-                        bbox.cpu().detach().numpy().round().astype(int).tolist()
+                        bbox.cpu().detach().numpy().round().astype(int)
                     )
                     if self.use_UNK_text:
                         chargrid_map[iter_b, h_start:h_end, w_start:w_end] = 100

@@ -890,7 +890,7 @@ class BEiT(nn.Module):
             self.embed_dim
         ) = embed_dim  # num_features for consistency with other models
         self.use_checkpoint = use_checkpoint
-
+        torch.fx.wrap("len")
         if hybrid_backbone is not None:
             self.patch_embed = HybridEmbed(
                 hybrid_backbone,
